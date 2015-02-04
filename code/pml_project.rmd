@@ -1,0 +1,330 @@
+---
+title: 'Coursera Practical Machine Learning Course Project'
+author: "Bill Cary"
+date: "Sunday, December 21, 2014"
+output:
+  html_document:
+    keep_md: yes
+---
+
+# Title - NOAA Storm Database Exploration and Analysis
+## Synopsis
+Based on the following analysis, it is clear that in terms of hazards to human
+health, tornados are far and away the leading weather-related cause of both 
+injuries and fatalities to human beings.  In terms of economic damage, flooding
+is the leading cause of both total economic damage as well as property damage.
+However, drought is the leading cause of crop damage.
+
+## Data Analysis
+### Set defaults
+Set knitr to echo code by default
+```{r setoptions, echo = TRUE}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Set echo=TRUE by default
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+library(knitr)
+opts_chunk$set(echo = TRUE)
+
+```
+
+### Prepare the analysis environment
+```{r prep}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Import required libraries
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+suppressMessages(library(ggplot2))     # General plotting functions
+suppressMessages(library(plyr))        # Data manipulation
+suppressMessages(library(dplyr))       # Data manipulation
+suppressMessages(library(gridExtra))   # Grid layout for ggplot2 graphs
+suppressMessages(library(scales))      # Axis scaling for ggplot2 graphs
+suppressMessages(library(Caret))       # Machine learning
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Set paths for files and directory structure
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Get the local path
+path <- getwd()
+
+## Define other paths
+path_code <- paste0(path, "/code/")
+path_train <- paste0(path, '/data/pml-training.csv')
+path_test <- paste0(path, '/data/pml-testing.csv')
+path_results <- paste0(path, '/results/')
+
+```
+
+### Loading the data
+Read the raw dataset into R.  Because the dataset is large and the initial load
+is time consuming, the cache=TRUE option is used to decrease the runtime after
+the initial execution of the analysis.
+```{r loaddata, cache=TRUE}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Read the data into R
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+train <- read.csv(path_train)
+test <- read.csv(path_test)
+```
+
+### Explore the Data
+For this exercise, the fields of interest are FATALITIES, INJURIES, PROPDMG,
+PROPDMGEXP, CROPDMG and CROPDMGEXP.  The PROPDMGEXP and CROPDMGEXP fields
+provide an "order of magnitude" describing the size of the monetary damages
+(thousands, millions, billions, etc...)
+```{r partition_train_data}
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Holdout 20% of training data for prelim testing/RMSLE estimates
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+set.seed(107)
+inTrain <- createDataPartition(y = train$count,
+                               p = 0.80,
+                               list = FALSE)
+
+training <- train[inTrain,]
+testing <- train[-inTrain,]
+
+```
+
+From the summaries above, it does not appear that the FATALITIES, INJURIES,
+PROPDMG and CROPDMG fields require cleansing/standardization.  However, the
+PROPDMGEXP and CROPDMGEXP field contain significant duplication of values ("m"
+and "M") that needs to be corrected before the data is useful for analysis.
+They also contain a number of values that are not defined, including +, -, ?
+as well as numeric values.  In addition, the exponents provided in those fields
+need to be applied to the PROPDMG and CROPDMG values to put the values of each
+event on the same numeric basis.
+
+```{r buildmodel}
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Establish training control and tuning parameters
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Set up training control parameters
+fitControl <- trainControl(## 10-fold CV
+        method = "repeatedcv",
+        number = 10,
+        ## repeated ten times
+        repeats = 10)
+
+# Set up the tuning grid
+grid <- expand.grid(size = c(c(5, 5, 5), c(10, 10, 10), c(20, 20, 20)))
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Train model
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+set.seed(300)
+casual.formula = classe ~ .
+
+model <- train(formula
+               ,data = training
+               ,method = 'mlp'
+               ,preprocess = 'range'
+               ,trControl = fitControl
+               ,tuneGrid = grid
+               ,verbose = FALSE)
+
+## Print the Model and Model Summary        
+print(model)
+summary(model)
+
+```
+
+By removing the ambiguously labeled rows, we have only removed
+`r (initial.length - final.length) * 100 / initial.length`% of the original
+data.
+
+```{r cleandata2}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Standardize the PROPDMG and CROPDMG values according to the following rules, 
+# based on the values in the PROPDMGEXP and CROPDMGEXP fields:
+#
+#        1) If PROPDMGEXP or CROPDMGEXP are blank, then leave the value as-is
+#        2) If they equal 'H', then multiply by 100
+#        3) If they equal 'K', then multiply by 1,000
+#        4) If they equal 'M', then multiply by 1,000,000
+#        5) If they equal 'B', then multiply by 1,000,000,000
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Create a function to handle the standardization
+standardize <- function(x,y) {
+        
+        if (y == 'H'){
+                x <- x * 100
+                }
+        else if (y == 'K'){
+                x <- x * 1000
+                }
+        else if (y == 'M'){
+                x <- x * 1000000
+                }
+        else if (y == 'B'){
+                x <- x * 1000000000
+                }
+        else{
+                x <- x
+                }
+
+return(x)
+
+}
+
+# Standardize the damage estimates
+data$PROPDMG <- mapply(standardize,x=data$PROPDMG,y=data$PROPDMGEXP)
+data$CROPDMG <- mapply(standardize,x=data$CROPDMG,y=data$CROPDMGEXP)
+
+```
+
+
+```{r healthhazard}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add a column that summarizes injuries and fatalities
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+data$TOTALHAZARDS <- data$FATALITIES + data$INJURIES
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Summarize the data by Event Type using dplyr
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sumdata <- group_by(data, EVTYPE) %>%
+        summarise(sumfatalities = sum(FATALITIES, na.rm=TRUE),
+                  suminjuries = sum(INJURIES, na.rm=TRUE),
+                  sumhazards = sum(TOTALHAZARDS, na.rm=TRUE)) %>% 
+        arrange(desc(sumhazards))
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Select the top 10 event types by total hazards
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+top10health <- head(sumdata, 10)
+
+top10health
+
+```
+
+```{r economicdamage}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Add a column that summarizes total economic damage caused by the event
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+data$TOTALDAMAGE <- data$PROPDMG + data$CROPDMG
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Summarize the data by Event Type using dplyr
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+sumdata <- group_by(data, EVTYPE) %>%
+        summarise(sumpropdmg = sum(PROPDMG, na.rm=TRUE),
+                  sumcropdmg = sum(CROPDMG, na.rm=TRUE),
+                  sumtotaldmg = sum(TOTALDAMAGE, na.rm=TRUE)) %>% 
+        arrange(desc(sumtotaldmg))
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Select the top 10 event types by total economic damage
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+top10econ <- head(sumdata, 10)
+
+top10econ
+```
+
+## Results
+
+This analysis is being conducted for the purpose of answering two questions:
+
+1. Across the United States, which types of events (as indicated in the EVTYPE
+variable) are most harmful with respect to population health?
+2. Across the United States, which types of events have the greatest economic
+consequences?
+
+For the purposes of answering these questions, I interpret the degree of harm of
+an event with respect to population health as being the aggregate total of all
+deaths and injuries (whether direct or indirect) caused by the event.  However,
+I also make special note of the events which lead to the highest number of
+direct and indirect deaths, as one can subjectively consider any injury, no
+matter how severe, to be less severe than death.
+
+I interpret economic damage for a given event as the sum of the property and
+crop damage.  The primary objective of this part of the exercise is to identify
+the greatest cause of economic damage, it is also useful to understand the
+largest causes of each component of damage - crop and property damage.
+
+*NOTE FOR GRADERS: The plot below is a single figure with multiple panels*
+*constructed using the gridExtra package.*
+
+
+```{r plots}
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Plot the top 10 event types in descending order of magnitude
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+plot1 <- ggplot(data=top10health, aes(x=reorder(EVTYPE, -sumhazards),
+                                      y=sumhazards)) +
+        geom_bar(stat="identity") +
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        xlab('') +
+        ylab('No of Occurences') +
+        theme(text = element_text(size=8)) +
+        ggtitle('Fatalities + Injuries') +
+        scale_y_continuous(labels = comma)
+
+plot2 <- ggplot(data=top10health, aes(x=reorder(EVTYPE, -sumfatalities),
+                                      y=sumfatalities)) +
+        geom_bar(stat="identity") +
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        xlab('') +
+        ylab('No of Occurences') +
+        theme(text = element_text(size=8)) +
+        ggtitle('Fatalities') +
+        scale_y_continuous(labels = comma)
+
+plot3 <- ggplot(data=top10health, aes(x=reorder(EVTYPE, -suminjuries),
+                                      y=suminjuries)) +
+        geom_bar(stat="identity") +
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        xlab('') +
+        ylab('No of Occurences') +
+        theme(text = element_text(size=8)) +
+        ggtitle('Injuries') +
+        scale_y_continuous(labels = comma)
+
+plot4 <- ggplot(data=top10econ, aes(x=reorder(EVTYPE, -sumtotaldmg),
+                                    y=sumtotaldmg)) +
+        geom_bar(stat="identity") +
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        xlab('') +
+        ylab('$ Damages') +
+        theme(text = element_text(size=8)) +
+        ggtitle('Property + Crop') +
+        scale_y_continuous(labels = comma)
+
+plot5 <- ggplot(data=top10econ, aes(x=reorder(EVTYPE, -sumpropdmg),
+                                    y=sumpropdmg)) +
+        geom_bar(stat="identity") +
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        xlab('') +
+        ylab('$ Damages') +
+        theme(text = element_text(size=8)) +
+        ggtitle('Property') +
+        scale_y_continuous(labels = comma)
+
+plot6 <- ggplot(data=top10econ, aes(x=reorder(EVTYPE, -sumcropdmg),
+                                    y=sumcropdmg)) +
+        geom_bar(stat="identity") +
+        theme(axis.text.x=element_text(angle=45, hjust=1)) +
+        xlab('') +
+        ylab('$ Damages') +
+        theme(text = element_text(size=8)) +
+        ggtitle('Crop') +
+        scale_y_continuous(labels = comma)
+
+grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, nrow=2, ncol=3)
+
+```
+
+## Appendix
+
+### Miscellaneous Support Information
+Print out system and session information to support future readers in
+replicating the environment used to produce the output, and in troubleshooting
+any potential issues that arise when running the code.
+```{r info}
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Print System and Session for reproducibility & troubleshooting.
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+print(Sys.time())
+print(sessionInfo())
+# print(Sys.info())   omit Sys.info() for privacy reasons
+```
