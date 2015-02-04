@@ -314,17 +314,7 @@ grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, nrow=2, ncol=3)
 
 ```
 
-## Appendix
+## Citation
+Data for this analysis was provided by the Human Activity Recognition (HAR) project. The HAR website is located at http://groupware.les.inf.puc-rio.br/har. Please refer to the following citation for additional information on the dataset:
 
-### Miscellaneous Support Information
-Print out system and session information to support future readers in
-replicating the environment used to produce the output, and in troubleshooting
-any potential issues that arise when running the code.
-```{r info}
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Print System and Session for reproducibility & troubleshooting.
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-print(Sys.time())
-print(sessionInfo())
-# print(Sys.info())   omit Sys.info() for privacy reasons
-```
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
