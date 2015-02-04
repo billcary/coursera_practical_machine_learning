@@ -7,15 +7,25 @@ output:
     keep_md: yes
 ---
 
-# Title - NOAA Storm Database Exploration and Analysis
+# Title - Weight Lifting Exercises Prediction
 ## Synopsis
-Based on the following analysis, it is clear that in terms of hazards to human
-health, tornados are far and away the leading weather-related cause of both 
-injuries and fatalities to human beings.  In terms of economic damage, flooding
-is the leading cause of both total economic damage as well as property damage.
-However, drought is the leading cause of crop damage.
+The goal of this project is to predict the manner in which participants did the
+exercise. This is the "classe" variable in the training set. Predictive models
+may use any of the other variables. The final output is a report describing how
+the model was constructed, how cross validation was used, the expected out of
+sample error, and why various choices were made. The model will also be used to
+predict 20 different test cases. 
 
-## Data Analysis
+## Model Building
+This exercise is an example of a classification problem.  (As opposed to a
+regression problem.)  Rather than predicting a continuous variable (regression),
+we are predicting a categorical variable.  Specifically, we are attempting to
+predict the result of a weight lifting exercise.  In this case, the result is
+one of the following five classifications: exactly according to the
+specification (Class A), throwing the elbows to the front (Class B), lifting the
+dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D)
+and throwing the hips to the front (Class E).
+
 ### Set defaults
 Set knitr to echo code by default
 ```{r setoptions, echo = TRUE}
@@ -27,7 +37,7 @@ opts_chunk$set(echo = TRUE)
 
 ```
 
-### Prepare the analysis environment
+### Prepare the environment
 ```{r prep}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Import required libraries
@@ -37,7 +47,7 @@ suppressMessages(library(plyr))        # Data manipulation
 suppressMessages(library(dplyr))       # Data manipulation
 suppressMessages(library(gridExtra))   # Grid layout for ggplot2 graphs
 suppressMessages(library(scales))      # Axis scaling for ggplot2 graphs
-suppressMessages(library(Caret))       # Machine learning
+suppressMessages(library(caret))       # Machine learning
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Set paths for files and directory structure
@@ -53,8 +63,8 @@ path_results <- paste0(path, '/results/')
 
 ```
 
-### Loading the data
-Read the raw dataset into R.  Because the dataset is large and the initial load
+### Load the data
+Read the raw datasets into R.  Because one dataset is large and the initial load
 is time consuming, the cache=TRUE option is used to decrease the runtime after
 the initial execution of the analysis.
 ```{r loaddata, cache=TRUE}
@@ -65,17 +75,15 @@ train <- read.csv(path_train)
 test <- read.csv(path_test)
 ```
 
-### Explore the Data
-For this exercise, the fields of interest are FATALITIES, INJURIES, PROPDMG,
-PROPDMGEXP, CROPDMG and CROPDMGEXP.  The PROPDMGEXP and CROPDMGEXP fields
-provide an "order of magnitude" describing the size of the monetary damages
-(thousands, millions, billions, etc...)
+### Partition the data
+For this exercise, I chose to use 80% of the training records for actual model
+building and training, and the remaining 20% for validation of the model.
 ```{r partition_train_data}
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Holdout 20% of training data for prelim testing/RMSLE estimates
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(107)
-inTrain <- createDataPartition(y = train$count,
+inTrain <- createDataPartition(y = train$classe,
                                p = 0.80,
                                list = FALSE)
 
@@ -84,21 +92,25 @@ testing <- train[-inTrain,]
 
 ```
 
-From the summaries above, it does not appear that the FATALITIES, INJURIES,
-PROPDMG and CROPDMG fields require cleansing/standardization.  However, the
-PROPDMGEXP and CROPDMGEXP field contain significant duplication of values ("m"
-and "M") that needs to be corrected before the data is useful for analysis.
-They also contain a number of values that are not defined, including +, -, ?
-as well as numeric values.  In addition, the exponents provided in those fields
-need to be applied to the PROPDMG and CROPDMG values to put the values of each
-event on the same numeric basis.
+### Train the Model
+I chose to utilize the Caret package to facilitate model building/training.
+For this exercise, I have chosen to use _10-fold repeated cross validation_ with
+_10 repeats_.
+
+Because of the large number of features (159 features in addition to the classe
+variable), and because I do not have any subject matter expertise regarding
+these features, I have chosen to use a neural network model that is capable of
+performing some degree of automated feature selection.
+
+In addition to the repeated cross validation, I use the Caret package (with a
+tuning grid) to select the optimal tuning parameters for the network.
 
 ```{r buildmodel}
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Establish training control and tuning parameters
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Set up training control parameters
+# Set up training control parameters (10-fold repeated cross validation)
 fitControl <- trainControl(## 10-fold CV
         method = "repeatedcv",
         number = 10,
