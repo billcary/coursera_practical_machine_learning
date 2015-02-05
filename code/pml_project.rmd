@@ -78,8 +78,11 @@ the initial execution of the analysis.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Read the data into R
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-train <- read.csv(path_train)
-test <- read.csv(path_test)
+train <- read.csv(path_train, stringsAsFactors=FALSE, na.strings = c('', 'NA'))
+test <- read.csv(path_test, stringsAsFactors=FALSE, na.strings = c('', 'NA'))
+
+train <- train[, 7:160]
+test <- test[, 7:160]
 ```
 
 ### Partition the data
@@ -99,18 +102,24 @@ testing <- train[-inTrain,]
 
 ```
 
-### Train the Model
+### Build and Train the Model
 I chose to utilize the Caret package to facilitate model building/training.
 For this exercise, I have chosen to use _10-fold repeated cross validation_ with
 _10 repeats_.
 
 Because of the large number of features (159 features in addition to the classe
 variable), and because I do not have any subject matter expertise regarding
-these features, I have chosen to use a neural network model that is capable of
-performing some degree of automated feature selection.
+these features, I have chosen to use a "deep learning" neural network model
+(deepnet) that is capable of performing some degree of automated feature
+selection.  However, prior to feeding data to the algorithm, I replace the NA
+values in the dataset then then perform a Principle Components Analysis to
+reduce the number of features considered by the model.  This preprocessing
+is done using the preProcess function in the caret package.
 
 In addition to the repeated cross validation, I use the Caret package (with a
-tuning grid) to select the optimal tuning parameters for the network.
+tuning grid) to select the optimal tuning parameters for the network.  I allow
+the algorithm to evaluate several alternative sizes for each of the three hidden
+layers.
 
 ```{r buildmodel}
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
