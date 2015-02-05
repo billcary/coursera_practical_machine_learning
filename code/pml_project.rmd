@@ -48,6 +48,13 @@ suppressMessages(library(dplyr))       # Data manipulation
 suppressMessages(library(gridExtra))   # Grid layout for ggplot2 graphs
 suppressMessages(library(scales))      # Axis scaling for ggplot2 graphs
 suppressMessages(library(caret))       # Machine learning
+suppressMessages(library(doParallel))  # Multicore processing
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Register parallel backend
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+cl <- makeCluster(4)  # set appropriately for server on which job will run
+registerDoParallel(cl)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Set paths for files and directory structure
@@ -119,20 +126,29 @@ fitControl <- trainControl(## 10-fold CV
 
 # Set up the tuning grid as a three hidden layer network with various numbers of
 # nodes in each hidden layer.
-grid <- expand.grid((layer1 = 1:5,
+grid <- expand.grid(layer1 = 1:5,
                     layer2 = 0:3,
-                    layer3 = 0:3))
+                    layer3 = 0:3,
+                    hidden_dropout = 0,
+                    visible_dropout = 0)
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Preprocess the data (impute missing values and perform PCA)
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+preprocValues <- preProcess(training, method = c('knnImpute', 'pca'))
+trainTransformed <- predict(preprocValues, training)
+testTransformed <- predict(preprocValues, testing)
+validateTransformed <- predict(preprocValues, test)
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Train model
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
-casual.formula = classe ~ .
+formula = classe ~ .
 
 model <- train(formula
-               ,data = training
+               ,data = trainTransformed
                ,method = 'dnn'
-               ,preprocess = c("center", "scale")
                ,trControl = fitControl
                ,tuneGrid = grid
                ,verbose = FALSE)
