@@ -78,9 +78,21 @@ the initial execution of the analysis.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Read the data into R
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-train <- read.csv(path_train, stringsAsFactors=FALSE, na.strings = c('', 'NA'))
-test <- read.csv(path_test, stringsAsFactors=FALSE, na.strings = c('', 'NA'))
+train <- read.csv(path_train, stringsAsFactors=FALSE,
+                  na.strings = c('', 'NA', '#DIV/0!'))
 
+test <- read.csv(path_test, stringsAsFactors=FALSE,
+                 na.strings = c('', 'NA', '#DIV/0!'))
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Replace NA values with 0
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+train[is.na(train)] <- 0
+test[is.na(test)] <- 0
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Drop features that will not be used for prediction
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 train <- train[, 7:160]
 test <- test[, 7:160]
 ```
@@ -142,9 +154,17 @@ grid <- expand.grid(layer1 = 1:5,
                     visible_dropout = 0)
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Drop columns with near zero variance (add no useful information for model)
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+nzv <- nearZeroVar(training)
+training <- training[, -nzv]
+testing <- testing[, -nzv]
+test <- test[, -nzv]
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Preprocess the data (impute missing values and perform PCA)
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-preprocValues <- preProcess(training, method = c('knnImpute', 'pca'))
+preprocValues <- preProcess(training[, -154], method = c('pca'))
 trainTransformed <- predict(preprocValues, training)
 testTransformed <- predict(preprocValues, testing)
 validateTransformed <- predict(preprocValues, test)
