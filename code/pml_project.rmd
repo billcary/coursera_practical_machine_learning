@@ -162,20 +162,24 @@ testing <- testing[, -nzv]
 test <- test[, -nzv]
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Preprocess the data (impute missing values and perform PCA)
+## Preprocess the data (perform PCA)
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-preprocValues <- preProcess(training[, -154], method = c('pca'))
-trainTransformed <- predict(preprocValues, training)
-testTransformed <- predict(preprocValues, testing)
-validateTransformed <- predict(preprocValues, test)
+preprocValues <- preProcess(training[, -length(training)], method = c('pca'))
+
+trainTransformed <- predict(preprocValues, training[, -length(training)])
+testTransformed <- predict(preprocValues, testing[, -length(testing)])
+validateTransformed <- predict(preprocValues, test[, -length(test)])
+
+trainTransformedClasse <- training[, length(training)]
+testTransformedClasse <- testing[, length(testing)]
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Train model
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
-formula = classe ~ .
 
-model <- train(formula
+model <- train(x = trainTransformed
+               ,y = trainTransformedClasse
                ,data = trainTransformed
                ,method = 'dnn'
                ,trControl = fitControl
