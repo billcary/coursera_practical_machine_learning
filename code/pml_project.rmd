@@ -1,7 +1,7 @@
 ---
 title: 'Coursera Practical Machine Learning Course Project'
 author: "Bill Cary"
-date: "Sunday, December 21, 2014"
+date: "Sunday, February 22, 2015"
 output:
   html_document:
     keep_md: yes
@@ -91,6 +91,11 @@ train[is.na(train)] <- 0
 test[is.na(test)] <- 0
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Ensure classe variable is stored as Factor
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+train$classe <- as.factor(train$classe)
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Drop features that will not be used for prediction
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 train <- train[, 7:160]
@@ -143,15 +148,18 @@ fitControl <- trainControl(## 10-fold CV
         method = "repeatedcv",
         number = 10,
         ## repeated ten times
-        repeats = 10)
+        repeats = 10,
+        classProbs = TRUE)
 
 # Set up the tuning grid as a three hidden layer network with various numbers of
 # nodes in each hidden layer.
-grid <- expand.grid(layer1 = 1:5,
-                    layer2 = 0:3,
-                    layer3 = 0:3,
-                    hidden_dropout = 0,
-                    visible_dropout = 0)
+# grid <- expand.grid(layer1 = 5,
+#                     layer2 = 3,
+#                     layer3 = 3,
+#                     hidden_dropout = 0,
+#                     visible_dropout = 0)
+
+grid <- expand.grid(mtry = c(5, 10, 15, 20))
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Drop columns with near zero variance (add no useful information for model)
@@ -181,10 +189,11 @@ set.seed(300)
 model <- train(x = trainTransformed
                ,y = trainTransformedClasse
                ,data = trainTransformed
-               ,method = 'dnn'
+               ,method = 'rf'
                ,trControl = fitControl
                ,tuneGrid = grid
-               ,verbose = FALSE)
+               ,verbose = FALSE
+               ,metric = 'Accuracy')
 
 ## Print the Model and Model Summary        
 print(model)
@@ -192,9 +201,7 @@ summary(model)
 
 ```
 
-By removing the ambiguously labeled rows, we have only removed
-`r (initial.length - final.length) * 100 / initial.length`% of the original
-data.
+
 
 ```{r cleandata2}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
