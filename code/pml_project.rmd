@@ -49,6 +49,7 @@ suppressMessages(library(gridExtra))   # Grid layout for ggplot2 graphs
 suppressMessages(library(scales))      # Axis scaling for ggplot2 graphs
 suppressMessages(library(caret))       # Machine learning
 suppressMessages(library(doParallel))  # Multicore processing
+suppressMessages(library(pROC))        # Model performance measurement
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Register parallel backend
@@ -71,9 +72,14 @@ path_results <- paste0(path, '/results/')
 ```
 
 ### Load the data
-Read the raw datasets into R.  Because one dataset is large and the initial load
-is time consuming, the cache=TRUE option is used to decrease the runtime after
-the initial execution of the analysis.
+Read the raw datasets into R.  When reading the data into R, I chose to treat
+all of the following strings as NA: '', 'NA', '#DIV/0!'.  I then replaced NA
+values with zero (which I believe to be acceptable for this particular dataset),
+and then trimmed off the first six columns of the data, as I did not intend to
+use those columns for modeling.  I also ensure that the classe variable is
+stored in R as a factor data type, to ensure that later modeling efforts are
+conducted as classification exercises, rather than regression.
+
 ```{r loaddata, cache=TRUE}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Read the data into R
@@ -119,24 +125,31 @@ testing <- train[-inTrain,]
 
 ```
 
+### Data Cleansing
+
+Before modeling, I performed a number of data cleansing/transformation steps to
+simplify the input data and improve performance of the model.  The steps are
+described below:
+
+1. Remove columns with near-zero variance, as they will have little or no
+predictive value.  I used the caret nearZeroVar function to identify the
+columns in the training set having little or no variance.  I then removed these
+columns from the training, testing and validation data sets.  This step removed
+100 columns from the data sets.
+2. Apply Principle Components Analysis (PCA) to the training set, then apply
+the same PCA to the testing and validation sets.  This reduced the size of the
+data sets from 54 columns down to 27 columns.
+
 ### Build and Train the Model
 I chose to utilize the Caret package to facilitate model building/training.
 For this exercise, I have chosen to use _10-fold repeated cross validation_ with
 _10 repeats_.
 
-Because of the large number of features (159 features in addition to the classe
-variable), and because I do not have any subject matter expertise regarding
-these features, I have chosen to use a "deep learning" neural network model
-(deepnet) that is capable of performing some degree of automated feature
-selection.  However, prior to feeding data to the algorithm, I replace the NA
-values in the dataset then then perform a Principle Components Analysis to
-reduce the number of features considered by the model.  This preprocessing
-is done using the preProcess function in the caret package.
+I chose to model the data using a Random Forest algorithm (rf in R).  I utilized
+the caret package to handle repeated cross validation and to select the optimal
+tuning parameters (number of randomly chosen features in each tree).
 
-In addition to the repeated cross validation, I use the Caret package (with a
-tuning grid) to select the optimal tuning parameters for the network.  I allow
-the algorithm to evaluate several alternative sizes for each of the three hidden
-layers.
+The model results (within sample) are shown below:
 
 ```{r buildmodel}
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -198,192 +211,36 @@ model <- train(x = trainTransformed
 ## Print the Model and Model Summary        
 print(model)
 summary(model)
+confusionMatrix(model)
 
 ```
 
+As can be seen from the figure below, the best cross-validation accuracy was
+obtained by basing each tree on five randomly chosen features.
 
+`r plot(model)`
 
-```{r cleandata2}
+### Evaluating Model Accuracy
+Out-of-sample predictions (more indicative of true model performance against
+unseen data) are shown below:
+```{r accuracy}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Standardize the PROPDMG and CROPDMG values according to the following rules, 
-# based on the values in the PROPDMGEXP and CROPDMGEXP fields:
-#
-#        1) If PROPDMGEXP or CROPDMGEXP are blank, then leave the value as-is
-#        2) If they equal 'H', then multiply by 100
-#        3) If they equal 'K', then multiply by 1,000
-#        4) If they equal 'M', then multiply by 1,000,000
-#        5) If they equal 'B', then multiply by 1,000,000,000
+# Generate predictions against 20% of data held out for testing
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Create a function to handle the standardization
-standardize <- function(x,y) {
-        
-        if (y == 'H'){
-                x <- x * 100
-                }
-        else if (y == 'K'){
-                x <- x * 1000
-                }
-        else if (y == 'M'){
-                x <- x * 1000000
-                }
-        else if (y == 'B'){
-                x <- x * 1000000000
-                }
-        else{
-                x <- x
-                }
-
-return(x)
-
-}
-
-# Standardize the damage estimates
-data$PROPDMG <- mapply(standardize,x=data$PROPDMG,y=data$PROPDMGEXP)
-data$CROPDMG <- mapply(standardize,x=data$CROPDMG,y=data$CROPDMGEXP)
-
+test.predictions <- predict(model, testTransformed)
 ```
 
+Confusion matrix:
+`r confusionMatrix(test.predictions, testTransformedClasse)`
 
-```{r healthhazard}
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Add a column that summarizes injuries and fatalities
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-data$TOTALHAZARDS <- data$FATALITIES + data$INJURIES
+ROC curve plot:
+`r roc <- multiclass.roc(as.numeric(testTransformedClasse), as.numeric(test.predictions), smooth = TRUE, plot = TRUE)`
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Summarize the data by Event Type using dplyr
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-sumdata <- group_by(data, EVTYPE) %>%
-        summarise(sumfatalities = sum(FATALITIES, na.rm=TRUE),
-                  suminjuries = sum(INJURIES, na.rm=TRUE),
-                  sumhazards = sum(TOTALHAZARDS, na.rm=TRUE)) %>% 
-        arrange(desc(sumhazards))
+As can be seen above, the performance of the model on out-of-sample data is
+quite good.  This is also demonstrated by the results obtained when the model
+was applied to the offficial test data and submitted for scoring; the correct
+result was obtained for 19 of the 20 examples in the test set.
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Select the top 10 event types by total hazards
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-top10health <- head(sumdata, 10)
-
-top10health
-
-```
-
-```{r economicdamage}
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Add a column that summarizes total economic damage caused by the event
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-data$TOTALDAMAGE <- data$PROPDMG + data$CROPDMG
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Summarize the data by Event Type using dplyr
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-sumdata <- group_by(data, EVTYPE) %>%
-        summarise(sumpropdmg = sum(PROPDMG, na.rm=TRUE),
-                  sumcropdmg = sum(CROPDMG, na.rm=TRUE),
-                  sumtotaldmg = sum(TOTALDAMAGE, na.rm=TRUE)) %>% 
-        arrange(desc(sumtotaldmg))
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Select the top 10 event types by total economic damage
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-top10econ <- head(sumdata, 10)
-
-top10econ
-```
-
-## Results
-
-This analysis is being conducted for the purpose of answering two questions:
-
-1. Across the United States, which types of events (as indicated in the EVTYPE
-variable) are most harmful with respect to population health?
-2. Across the United States, which types of events have the greatest economic
-consequences?
-
-For the purposes of answering these questions, I interpret the degree of harm of
-an event with respect to population health as being the aggregate total of all
-deaths and injuries (whether direct or indirect) caused by the event.  However,
-I also make special note of the events which lead to the highest number of
-direct and indirect deaths, as one can subjectively consider any injury, no
-matter how severe, to be less severe than death.
-
-I interpret economic damage for a given event as the sum of the property and
-crop damage.  The primary objective of this part of the exercise is to identify
-the greatest cause of economic damage, it is also useful to understand the
-largest causes of each component of damage - crop and property damage.
-
-*NOTE FOR GRADERS: The plot below is a single figure with multiple panels*
-*constructed using the gridExtra package.*
-
-
-```{r plots}
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Plot the top 10 event types in descending order of magnitude
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-plot1 <- ggplot(data=top10health, aes(x=reorder(EVTYPE, -sumhazards),
-                                      y=sumhazards)) +
-        geom_bar(stat="identity") +
-        theme(axis.text.x=element_text(angle=45, hjust=1)) +
-        xlab('') +
-        ylab('No of Occurences') +
-        theme(text = element_text(size=8)) +
-        ggtitle('Fatalities + Injuries') +
-        scale_y_continuous(labels = comma)
-
-plot2 <- ggplot(data=top10health, aes(x=reorder(EVTYPE, -sumfatalities),
-                                      y=sumfatalities)) +
-        geom_bar(stat="identity") +
-        theme(axis.text.x=element_text(angle=45, hjust=1)) +
-        xlab('') +
-        ylab('No of Occurences') +
-        theme(text = element_text(size=8)) +
-        ggtitle('Fatalities') +
-        scale_y_continuous(labels = comma)
-
-plot3 <- ggplot(data=top10health, aes(x=reorder(EVTYPE, -suminjuries),
-                                      y=suminjuries)) +
-        geom_bar(stat="identity") +
-        theme(axis.text.x=element_text(angle=45, hjust=1)) +
-        xlab('') +
-        ylab('No of Occurences') +
-        theme(text = element_text(size=8)) +
-        ggtitle('Injuries') +
-        scale_y_continuous(labels = comma)
-
-plot4 <- ggplot(data=top10econ, aes(x=reorder(EVTYPE, -sumtotaldmg),
-                                    y=sumtotaldmg)) +
-        geom_bar(stat="identity") +
-        theme(axis.text.x=element_text(angle=45, hjust=1)) +
-        xlab('') +
-        ylab('$ Damages') +
-        theme(text = element_text(size=8)) +
-        ggtitle('Property + Crop') +
-        scale_y_continuous(labels = comma)
-
-plot5 <- ggplot(data=top10econ, aes(x=reorder(EVTYPE, -sumpropdmg),
-                                    y=sumpropdmg)) +
-        geom_bar(stat="identity") +
-        theme(axis.text.x=element_text(angle=45, hjust=1)) +
-        xlab('') +
-        ylab('$ Damages') +
-        theme(text = element_text(size=8)) +
-        ggtitle('Property') +
-        scale_y_continuous(labels = comma)
-
-plot6 <- ggplot(data=top10econ, aes(x=reorder(EVTYPE, -sumcropdmg),
-                                    y=sumcropdmg)) +
-        geom_bar(stat="identity") +
-        theme(axis.text.x=element_text(angle=45, hjust=1)) +
-        xlab('') +
-        ylab('$ Damages') +
-        theme(text = element_text(size=8)) +
-        ggtitle('Crop') +
-        scale_y_continuous(labels = comma)
-
-grid.arrange(plot1, plot2, plot3, plot4, plot5, plot6, nrow=2, ncol=3)
-
-```
 
 ## Citation
 Data for this analysis was provided by the Human Activity Recognition (HAR) project. The HAR website is located at http://groupware.les.inf.puc-rio.br/har. Please refer to the following citation for additional information on the dataset:
