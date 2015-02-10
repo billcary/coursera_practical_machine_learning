@@ -68,6 +68,7 @@ path_code <- paste0(path, "/code/")
 path_train <- paste0(path, '/data/pml-training.csv')
 path_test <- paste0(path, '/data/pml-testing.csv')
 path_results <- paste0(path, '/results/')
+path_model <- paste0(path, '/rfModel.rds')
 
 ```
 
@@ -80,7 +81,7 @@ use those columns for modeling.  I also ensure that the classe variable is
 stored in R as a factor data type, to ensure that later modeling efforts are
 conducted as classification exercises, rather than regression.
 
-```{r loaddata, cache=TRUE}
+```{r loaddata}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Read the data into R
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -199,14 +200,16 @@ testTransformedClasse <- testing[, length(testing)]
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
 
-model <- train(x = trainTransformed
-               ,y = trainTransformedClasse
-               ,data = trainTransformed
-               ,method = 'rf'
-               ,trControl = fitControl
-               ,tuneGrid = grid
-               ,verbose = FALSE
-               ,metric = 'Accuracy')
+# model <- train(x = trainTransformed
+#                ,y = trainTransformedClasse
+#                ,data = trainTransformed
+#                ,method = 'rf'
+#                ,trControl = fitControl
+#                ,tuneGrid = grid
+#                ,verbose = FALSE
+#                ,metric = 'Accuracy')
+
+model <- readRDS(path_model)
 
 ## Print the Model and Model Summary        
 print(model)
