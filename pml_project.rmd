@@ -279,6 +279,10 @@ all of these models simply because of the processing time required to train
 the models.  (The random forest model in this exercise ran overnight for a
 period of several hours.)
 
+In addition to the application of additional algorithms, it would also be
+interesting to look at the sequencing of the measurements to incorporate any
+temporal (time series) effects that may be present.
+
 ## Citation
 Data for this analysis was provided by the Human Activity Recognition (HAR) project. The HAR website is located at http://groupware.les.inf.puc-rio.br/har. Please refer to the following citation for additional information on the dataset:
 
