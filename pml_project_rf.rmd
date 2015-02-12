@@ -60,6 +60,7 @@ suppressMessages(library(dplyr))         # Data manipulation
 suppressMessages(library(gridExtra))     # Grid layout for ggplot2 graphs
 suppressMessages(library(scales))        # Axis scaling for ggplot2 graphs
 suppressMessages(library(caret))         # Machine learning
+suppressMessages(library(doParallel))    # Parallel processing
 suppressMessages(library(foreach))       # Parallel processing
 suppressMessages(library(pROC))          # Model performance measurement
 suppressMessages(library(randomForest))  # Machine learning
@@ -191,6 +192,9 @@ testTransformedClasse <- testing[, length(testing)]
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
 
+# Train model in parallel using foreach. Split 1000 trees across 4 cores.
+# (Trees should be split across the number of cores registered with doParallel
+# above.)
 model <- foreach(ntree=rep(250, 4), .combine=combine,
                  .packages='randomForest') %dopar%
         randomForest(x = trainTransformed
@@ -202,23 +206,13 @@ model <- foreach(ntree=rep(250, 4), .combine=combine,
 ## Print the Model and Model Summary        
 print(model)
 summary(model)
-confusionMatrix(model)
+confusionMatrix(model$predicted, trainTransformedClasse)
 
-```
-
-As can be seen from the figure below, the best cross-validation accuracy was
-obtained by basing each tree on five randomly chosen features.
-
-```{r plotmodel}
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Plot the model
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-plot(model)
 ```
 
 ### Evaluating Model Accuracy
 Out-of-sample predictions (more indicative of true model performance against
-unseen data) are shown below in the form of a confusion matrix a ROC curve
+unseen data) are shown below in the form of a confusion matrix and a ROC curve
 plot.
 
 ```{r accuracy}
@@ -236,9 +230,10 @@ confusionMatrix(test.predictions, testTransformedClasse)
 # Plot multiclass ROC curve
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 roc <- multiclass.roc(as.numeric(testTransformedClasse),
-                      as.numeric(test.predictions),
-                      smooth = TRUE,
-                      plot = TRUE)
+                      as.numeric(test.predictions))
+
+auc <- auc(as.numeric(testTransformedClasse),
+           as.numeric(test.predictions))
 ```
 
 As can be seen above, the performance of the model on out-of-sample data is
