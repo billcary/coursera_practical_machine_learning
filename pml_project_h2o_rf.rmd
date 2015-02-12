@@ -60,7 +60,6 @@ suppressMessages(library(dplyr))       # Data manipulation
 suppressMessages(library(gridExtra))   # Grid layout for ggplot2 graphs
 suppressMessages(library(scales))      # Axis scaling for ggplot2 graphs
 suppressMessages(library(caret))       # Machine learning
-suppressMessages(library(doParallel))  # Multicore processing
 suppressMessages(library(pROC))        # Model performance measurement
 suppressMessages(library(h2o))         # Machine learning
 
@@ -166,28 +165,6 @@ The model results (within sample) are shown below:
 
 ```{r buildmodel}
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Establish training control and tuning parameters
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-# Set up training control parameters (10-fold repeated cross validation)
-fitControl <- trainControl(## 10-fold CV
-        method = "repeatedcv",
-        number = 10,
-        ## repeated ten times
-        repeats = 10,
-        classProbs = TRUE)
-
-# Set up the tuning grid as a three hidden layer network with various numbers of
-# nodes in each hidden layer.
-# grid <- expand.grid(layer1 = 5,
-#                     layer2 = 3,
-#                     layer3 = 3,
-#                     hidden_dropout = 0,
-#                     visible_dropout = 0)
-
-grid <- expand.grid(mtry = c(5, 10, 15, 20))
-
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Drop columns with near zero variance (add no useful information for model)
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 nzv <- nearZeroVar(training)
@@ -204,8 +181,8 @@ trainTransformed <- predict(preprocValues, training[, -length(training)])
 testTransformed <- predict(preprocValues, testing[, -length(testing)])
 validateTransformed <- predict(preprocValues, test[, -length(test)])
 
-trainTransformedClasse <- as.data.frame(training[, length(training)])
-testTransformedClasse <- as.data.frame(testing[, length(testing)])
+trainTransformed$classe <- training[, length(training)]
+testTransformed$classe <- testing[, length(testing)]
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Send processed dataframes to H2O for modeling
@@ -217,38 +194,23 @@ testTransformed.hex <- as.h2o(localH2O, testTransformed,
 validateTransformed.hex <- as.h2o(localH2O, validateTransformed,
                                key = 'validateTransformed.hex')
 
-trainTransformedClasse.hex <- as.h2o(localH2O, trainTransformedClasse[,1],
-                               key = 'trainTransformedClasse.hex')
-testTransformedClasse.hex <- as.h2o(localH2O, testTransformedClasse,
-                               key = 'testTransformedClasse.hex')
-
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Train model
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
 
-# model <- train(x = trainTransformed
-#                ,y = trainTransformedClasse
-#                ,data = trainTransformed
-#                ,method = 'rf'
-#                ,trControl = fitControl
-#                ,tuneGrid = grid
-#                ,verbose = FALSE
-#                ,metric = 'Accuracy')
-
-model.hex <- h2o.randomForest(x = trainTransformed.hex,
-                              y = trainTransformedClasse.hex,
+model.hex <- h2o.randomForest(x = 1:27,
+                              y = 28,
                               data = trainTransformed.hex,
                               classification = TRUE,
-                              ntree = 1000,
-                              mtries = 5,
-                              nfolds = 10,
+                              ntree = 100,
+                              mtries = 10,
+                              nfolds = 5,
                               oobee = TRUE)
 
 ## Print the Model and Model Summary        
-print(model)
-summary(model)
-confusionMatrix(model)
+print(model.hex)
+
 
 ```
 
@@ -259,7 +221,7 @@ obtained by basing each tree on five randomly chosen features.
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Plot the model
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-plot(model)
+plot(model.hex)
 ```
 
 ### Evaluating Model Accuracy
