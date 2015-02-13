@@ -60,16 +60,8 @@ suppressMessages(library(dplyr))         # Data manipulation
 suppressMessages(library(gridExtra))     # Grid layout for ggplot2 graphs
 suppressMessages(library(scales))        # Axis scaling for ggplot2 graphs
 suppressMessages(library(caret))         # Machine learning
-suppressMessages(library(doParallel))    # Parallel processing
-suppressMessages(library(foreach))       # Parallel processing
 suppressMessages(library(pROC))          # Model performance measurement
 suppressMessages(library(e1071))         # Machine learning
-
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Register parallel backend
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-cl <- makeCluster(4)  # set appropriately for server on which job will run
-registerDoParallel(cl)
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Set paths for files and directory structure
@@ -194,7 +186,6 @@ trainTransformed$classe <- trainTransformedClasse
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
 
-# Utilize all available cores (4) to train in parallel.
 model <- svm(trainTransformed$classe ~ .
              ,data = trainTransformed
              ,kernel = 'radial')
