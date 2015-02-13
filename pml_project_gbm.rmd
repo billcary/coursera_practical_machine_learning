@@ -187,23 +187,23 @@ validateTransformed <- predict(preprocValues, test[, -length(test)])
 trainTransformedClasse <- training[, length(training)]
 testTransformedClasse <- testing[, length(testing)]
 
+trainTransformed$classe <- trainTransformedClasse
+
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Train model
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
 
-# Train model in parallel using foreach. Split 1000 trees across 4 cores.
-# (Trees should be split across the number of cores registered with doParallel
-# above.)
-model <- gbm.fit(x = trainTransformed
-                 ,y = trainTransformedClasse
-                 ,data = trainTransformed
-                 ,distribution = 'multinomial'
-                 ,interaction.depth = 3
-                 ,n.minobsinnode = 5
-                 ,n.trees = 500
-                 ,cv.folds = 10
-                 ,n.cores = 4)
+# Utilize all available cores (4) to train in parallel.
+model <- gbm(trainTransformed$classe ~ .
+             ,data = trainTransformed
+             ,distribution = 'multinomial'
+             ,interaction.depth = 4
+             ,shrinkage = 0.1
+             ,n.minobsinnode = 5
+             ,n.trees = 300
+             ,cv.folds = 10
+             ,n.cores = 4)
 
 ## Print the Model and Model Summary        
 print(model)
@@ -221,12 +221,13 @@ plot.
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Generate predictions against 20% of data held out for testing
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-test.predictions <- predict(model, testTransformed)
+test.predictions <- predict(model, testTransformed, n.trees = 300,
+                            type = 'response')
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Print Out-of-Sample confusion matrix
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-confusionMatrix(test.predictions, testTransformedClasse)
+confusionMatrix(test.predictions, testTransformedClasse)$overall
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Plot multiclass ROC curve
