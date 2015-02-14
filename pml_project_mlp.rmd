@@ -82,7 +82,6 @@ path_code <- paste0(path, "/code/")
 path_train <- paste0(path, '/data/pml-training.csv')
 path_test <- paste0(path, '/data/pml-testing.csv')
 path_results <- paste0(path, '/results/')
-path_model <- paste0(path, '/rfModel.rds')
 
 ```
 
@@ -102,14 +101,14 @@ conducted as classification exercises, rather than regression.
 train <- read.csv(path_train, stringsAsFactors=FALSE,
                   na.strings = c('', 'NA', '#DIV/0!'))
 
-test <- read.csv(path_test, stringsAsFactors=FALSE,
-                 na.strings = c('', 'NA', '#DIV/0!'))
+submission <- read.csv(path_test, stringsAsFactors=FALSE,
+                       na.strings = c('', 'NA', '#DIV/0!'))
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Replace NA values with 0
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 train[is.na(train)] <- 0
-test[is.na(test)] <- 0
+submission[is.na(submission)] <- 0
 
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Ensure classe variable is stored as Factor
@@ -120,23 +119,52 @@ train$classe <- as.factor(train$classe)
 ## Drop features that will not be used for prediction
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 train <- train[, 7:160]
-test <- test[, 7:160]
+submission <- submission[, 7:160]
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Shuffle records
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+set.seed(20)
+train <- train[sample(1:nrow(train),length(1:nrow(train))),1:ncol(train)]
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Drop columns with near zero variance (add no useful information for model)
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+nzv <- nearZeroVar(train)
+training <- train[, -nzv]
+submission <- submission[, -nzv]
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Separate predictor variables from classifications
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+training.values <- training[, -length(training)]
+
+training.targets <- training[, length(training)]
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Decode (vectorize) target classifications to prepare data for neural net
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+training.targets <- decodeClassLabels(training.targets)
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Holdout 20% of training data for testing
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+set.seed(107)
+training <- splitForTrainingAndTest(training.values,
+                                    training.targets,
+                                    ratio = 0.20)
+
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Normalize to prepare data for neural net
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+training <- normTrainingAndTestSet(training)
 ```
 
 ### Partition the data
 For this exercise, I chose to use 80% of the training records for actual model
 building and training, and the remaining 20% for validation of the model.
 ```{r partition_train_data}
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Holdout 20% of training data for prelim testing/RMSLE estimates
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-set.seed(107)
-inTrain <- createDataPartition(y = train$classe,
-                               p = 0.80,
-                               list = FALSE)
 
-training <- train[inTrain,]
-testing <- train[-inTrain,]
 
 ```
 
@@ -168,52 +196,17 @@ The model results (within sample) are shown below:
 
 ```{r buildmodel}
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Drop columns with near zero variance (add no useful information for model)
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-nzv <- nearZeroVar(training)
-training <- training[, -nzv]
-testing <- testing[, -nzv]
-test <- test[, -nzv]
-
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Preprocess the data (perform PCA)
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-preprocValues <- preProcess(training[, -length(training)], method = c('pca'))
-
-trainTransformed <- predict(preprocValues, training[, -length(training)])
-testTransformed <- predict(preprocValues, testing[, -length(testing)])
-validateTransformed <- predict(preprocValues, test[, -length(test)])
-
-trainTransformedClasse <- training[, length(training)]
-testTransformedClasse <- testing[, length(testing)]
-
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-## Normalize data and decode class labels to prepare data for
-## neural net training.
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-trainTransformedNorm <- normTrainingAndTestSet(trainTransformed)
-testTransformedNorm <- normTrainingAndTestSet(testTransformed)
-validateTransformedNorm <- normTrainingAndTestSet(validateTransformed)
-
-trainTransformedClasseDecode <- decodeClassLabels(trainTransformedClasse)
-testTransformedClasseDecode <- decodeClassLabels(testTransformedClasse)
-
-## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Train model
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 set.seed(300)
 
-model <- mlp(x = as.matrix(trainTransformed)
-             ,y = (trainTransformedClasseDecode)
-             ,size = c(10, 10)
-             ,inputsTest = testTransformed
-             ,targetsTest = testTransformedClasseDecode)
-
-## Print the Model and Model Summary        
-print(model)
-summary(model)
-confusionMatrix(model$predicted, trainTransformedClasse)
-
+hidden.units <- c(50, 50)
+model <- foreach(i=hidden.units, .packages='RSNNS') %do% {
+        mlp(x = training$inputsTrain, 
+            ,y = training$targetsTrain
+            ,size = i
+            ,inputsTest = training$inputsTest
+            ,targetsTest = training$targetsTest)}
 ```
 
 ### Evaluating Model Accuracy
@@ -222,24 +215,30 @@ unseen data) are shown below in the form of a confusion matrix and a ROC curve
 plot.
 
 ```{r accuracy}
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Generate predictions against 20% of data held out for testing
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-test.predictions <- nn.predict(model, testTransformed)
+## Print the Model and Model Summary        
+summary(model)
+model
+weightMatrix(model)
+extractNetInfo(model)
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Print Out-of-Sample confusion matrix
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-confusionMatrix(test.predictions, testTransformedClasse)
+par(mfrow=c(2,2))
+plotIterativeError(model)
 
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Plot multiclass ROC curve
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-roc <- multiclass.roc(as.numeric(testTransformedClasse),
-                      as.numeric(test.predictions))
+predictions <- predict(model,training$inputsTest)
 
-auc <- auc(as.numeric(testTransformedClasse),
-           as.numeric(test.predictions))
+plotRegressionError(predictions[,2], training$targetsTest[,2])
+
+confusionMatrix(training$targetsTrain,fitted.values(model))
+confusionMatrix(training$targetsTest,predictions)
+
+plotROC(fitted.values(model)[,2], training$targetsTrain[,2])
+plotROC(predictions[,2], training$targetsTest[,2])
+
+#confusion matrix with 402040-method
+confusionMatrix(training$targetsTrain, encodeClassLabels(fitted.values(model),
+                                                         method="402040",
+                                                         l=0.4,
+                                                         h=0.6))
 ```
 
 As can be seen above, the performance of the model on out-of-sample data is
