@@ -140,6 +140,18 @@ testing <- train[-inTrain,]
 
 ```
 
+Below is a very brief exploration of the classe variable we are attempting to
+predict.  As seen below, class A occurs most frequently, with approximately
+28% of the training set falling into that class.
+```{r explore_train_data}
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+## Brief exploration of classe data
+## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+table(training$classe)
+prop.table(table(training$classe))
+
+```
+
 ### Data Cleansing
 
 Before modeling, I performed a number of data cleansing/transformation steps to
@@ -178,7 +190,8 @@ test <- test[, -nzv]
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ## Preprocess the data (perform PCA)
 ## ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-preprocValues <- preProcess(training[, -length(training)], method = c('pca'))
+preprocValues <- preProcess(training[, -length(training)],
+                            method = c('pca', 'center', 'scale'))
 
 trainTransformed <- predict(preprocValues, training[, -length(training)])
 testTransformed <- predict(preprocValues, testing[, -length(testing)])
@@ -193,8 +206,8 @@ testTransformedClasse <- testing[, length(testing)]
 set.seed(300)
 
 model <- nn.train(x = as.matrix(trainTransformed)
-                  ,y = as.integer((trainTransformedClasse))
-                  ,hidden = c(10, 10)
+                  ,y = as.integer(trainTransformedClasse)
+                  ,hidden = c(50, 50)
                   ,activationfun = 'tanh')
 
 ## Print the Model and Model Summary        
@@ -207,7 +220,11 @@ confusionMatrix(model$predicted, trainTransformedClasse)
 ### Evaluating Model Accuracy
 Out-of-sample predictions (more indicative of true model performance against
 unseen data) are shown below in the form of a confusion matrix and a ROC curve
-plot.
+plot.  At a minimum, we would expect the AUC (area under the ROC curve) to
+be greater than 0.50 (the AUC expected from random guessing).  In addition, we
+also expect out-of-sample accuracy to exceed 28% - the accuracy we could
+resonably expect to obtain if we simply predicted the most frequent class (A)
+for each testing sample.
 
 ```{r accuracy}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
