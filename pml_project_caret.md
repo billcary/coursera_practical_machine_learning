@@ -273,7 +273,7 @@ print(model)
 ## Resampling results
 ## 
 ##   Accuracy  Kappa   Accuracy SD  Kappa SD
-##   0.9572    0.9458  0.00613      0.007739
+##   0.9562    0.9446  0.004778     0.006034
 ## 
 ## Tuning parameter 'mtry' was held constant at a value of 5
 ## 
@@ -320,8 +320,8 @@ confusionMatrix(model)
 ##  
 ##           Reference
 ## Prediction    A    B    C    D    E
-##          A 28.0  0.5  0.1  0.0  0.0
-##          B  0.2 18.3  0.5  0.0  0.3
+##          A 27.9  0.6  0.1  0.1  0.0
+##          B  0.3 18.2  0.5  0.0  0.2
 ##          C  0.1  0.4 16.6  1.0  0.2
 ##          D  0.1  0.0  0.2 15.2  0.3
 ##          E  0.0  0.1  0.1  0.1 17.6
@@ -412,8 +412,7 @@ was good, it would be interesting to compare the performance of the random
 forest with that of SVM, GBM and neural net models.  In addition, it would be
 interesting to utilize a deep learning neural network model.  I did not attempt
 all of these models simply because of the processing time required to train
-the models.  (The random forest model in this exercise ran overnight for a
-period of several hours.)
+the models.
 
 In addition to the application of additional algorithms, it would also be
 interesting to look at the sequencing of the measurements to incorporate any

@@ -275,8 +275,7 @@ was good, it would be interesting to compare the performance of the random
 forest with that of SVM, GBM and neural net models.  In addition, it would be
 interesting to utilize a deep learning neural network model.  I did not attempt
 all of these models simply because of the processing time required to train
-the models.  (The random forest model in this exercise ran overnight for a
-period of several hours.)
+the models.
 
 In addition to the application of additional algorithms, it would also be
 interesting to look at the sequencing of the measurements to incorporate any
